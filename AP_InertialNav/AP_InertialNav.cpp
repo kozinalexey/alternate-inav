@@ -24,7 +24,7 @@ const AP_Param::GroupInfo AP_InertialNav::var_info[] PROGMEM = {
     // koef for correction inav xy speed from gps range 0-100 
     // @Param: GPS_XY_SPD
     // @DisplayName: inav speed correction
-    // @Description: 0=no use gps, 100 = use gps speed only
+    // @Description: big values pool inav speed faster to gps speed
     // @Range: 0 100
     // @Increment: 1
     AP_GROUPINFO("GPS_XY_SPD",   3, AP_InertialNav, _gps_k_spd, 100),
