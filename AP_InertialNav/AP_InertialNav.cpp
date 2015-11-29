@@ -58,12 +58,12 @@ void AP_InertialNav::update(float dt)
     // check if new gps readings have arrived and use them to correct position estimates
     check_gps();
 
-    Vector3f accel_ef = _ahrs.get_accel_ef();
+    Vector3f accel_ef = _ahrs.get_accel_ef(); //accelerations  x  + to notrh  ; y + to east  ; z + up  rotation of controller independent
 	Vector3f accel_ef_prev ;
 
     // remove influence of gravity
-    accel_ef.z += GRAVITY_MSS;
-    accel_ef *= 100.0f; //meters to cm per seconds
+    accel_ef.z += GRAVITY_MSS; // ~ 9.8 m s s
+    accel_ef *= 100.0f; //convert meters to cm per seconds
 	
     // remove xy if not enabled
     if( !_xy_enabled ) {
