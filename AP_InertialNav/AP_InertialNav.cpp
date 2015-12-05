@@ -123,17 +123,18 @@ void AP_InertialNav::update(float dt)
 	_position.z = _position_base.z + _position_correction.z;
 
 
-	    // calculate new velocity
-	_velocity += velocity_increase;
 
-	_position_correction.x = _velocity.x  * dt  ; // S=at2 + V0  // s =V0*t + V1*t
-	_position_correction.y = _velocity.y  * dt  ;
+
+	_position_correction.x = (_velocity.x + velocity_increase.x * 0.5f)  * dt  ; // S=at^2/2 + V0t  average velocity during acceleration velocity_increase /2
+	_position_correction.y = (_velocity.y + velocity_increase.y * 0.5f)  * dt  ;
 
 	_position = _position + _position_correction;
 
 	_position.x = _position.x * _gps_k_inav_pos +  _gps_position.x * _gps_k_gps_pos; //pool inav position to gps position
 	_position.y = _position.y * _gps_k_inav_pos +  _gps_position.y * _gps_k_gps_pos;
 
+	    // calculate new velocity
+	_velocity += velocity_increase;
 
 	_velocity.x = _velocity.x * _gps_k_inav_spd + _gps_velocity_x * _gps_k_gps_spd ; //pool inav velocity to gps velocity
 	_velocity.y = _velocity.y * _gps_k_inav_spd + _gps_velocity_y * _gps_k_gps_spd ;
