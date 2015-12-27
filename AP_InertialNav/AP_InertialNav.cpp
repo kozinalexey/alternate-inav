@@ -258,7 +258,7 @@ void AP_InertialNav::correct_with_gps(uint32_t now, int32_t lon, int32_t lat)
 		  _hv_y.push_back(_velocity.y);
 
 		  if (_gps_delay ==0) {
-				  _gps_position_lag_x = 0; //todo change to peek 
+				  _gps_position_lag_x = 0; 
 				  _gps_position_lag_y = 0;			 
 				  _gps_velocity_lag_x = 0;
 				  _gps_velocity_lag_y = 0;		  
