@@ -265,7 +265,7 @@ void AP_InertialNav::correct_with_gps(uint32_t now, int32_t lon, int32_t lat)
 								}
 		  else {
 			  if( _hp_x.is_full()) {  //calculate delayed speed and position
-				  _gps_position_lag_x = _position.x - _hp_x.peek(_gps_sample_number); //todo change to peek 
+				  _gps_position_lag_x = _position.x - _hp_x.peek(_gps_sample_number); //peek 0 400ms peek 1 300ms etc
 				  _gps_position_lag_y = _position.y - _hp_y.peek(_gps_sample_number);			 
 				  _gps_velocity_lag_x = _velocity.x - _hv_x.peek(_gps_sample_number);
 				  _gps_velocity_lag_y = _velocity.y - _hv_y.peek(_gps_sample_number);
