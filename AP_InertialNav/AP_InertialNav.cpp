@@ -12,7 +12,7 @@ const AP_Param::GroupInfo AP_InertialNav::var_info[] PROGMEM = {
     // @Description: big values pool position faster to gps
     // @Range: 0 1000
     // @Increment: 0.1
-    AP_GROUPINFO("GPS_XY_POS",   1, AP_InertialNav, _gps_k_pos, 100),
+    AP_GROUPINFO("GPS_XY_POS",   1, AP_InertialNav, _gps_k_pos, 8),
 
     // @Param: TC_Z
     // @DisplayName: Vertical Time Constant
@@ -24,10 +24,20 @@ const AP_Param::GroupInfo AP_InertialNav::var_info[] PROGMEM = {
     // koef for correction inav xy speed from gps range 0-100 
     // @Param: GPS_XY_SPD
     // @DisplayName: inav speed correction
-    // @Description: big values pool inav speed faster to gps speed
+    // @Description: 0=no use gps, 100 = use gps speed only
     // @Range: 0 100
     // @Increment: 1
-    AP_GROUPINFO("GPS_XY_SPD",   3, AP_InertialNav, _gps_k_spd, 100),
+    AP_GROUPINFO("GPS_XY_SPD",   3, AP_InertialNav, _gps_k_spd, 3),
+  
+	// gps delay compensation range 0-5 
+    // @Param: GPS_DELAY
+    // @DisplayName:  gps delay compensation 
+    // @Description: 0=disabled, 5 = 500ms delay compensation
+    // @Range: 0 5
+    // @Increment: 1
+    AP_GROUPINFO("GPS_DELAY",   4, AP_InertialNav, _gps_delay, 3),
+
+
 
     AP_GROUPEND
 };
@@ -58,12 +68,12 @@ void AP_InertialNav::update(float dt)
     // check if new gps readings have arrived and use them to correct position estimates
     check_gps();
 
-    Vector3f accel_ef = _ahrs.get_accel_ef(); //accelerations  x  + to notrh  ; y + to east  ; z + up  rotation of controller independent
+    Vector3f accel_ef = _ahrs.get_accel_ef();
 	Vector3f accel_ef_prev ;
 
     // remove influence of gravity
-    accel_ef.z += GRAVITY_MSS; // ~ 9.8 m s s
-    accel_ef *= 100.0f; //convert meters to cm per seconds
+    accel_ef.z += GRAVITY_MSS;
+    accel_ef *= 100.0f; //meters to cm per seconds
 	
     // remove xy if not enabled
     if( !_xy_enabled ) {
@@ -124,32 +134,34 @@ void AP_InertialNav::update(float dt)
 
 
 
-
-	_position_correction.x = (_velocity.x + velocity_increase.x * 0.5f)  * dt  ; // S=at^2/2 + V0t  average velocity during acceleration velocity_increase /2
+    _position_correction.x = (_velocity.x + velocity_increase.x * 0.5f)  * dt  ; // S=at^2/2 + V0t  average velocity during acceleration velocity_increase /2
 	_position_correction.y = (_velocity.y + velocity_increase.y * 0.5f)  * dt  ;
 
 	_position = _position + _position_correction;
 
-	_position.x = _position.x * _gps_k_inav_pos +  _gps_position.x * _gps_k_gps_pos; //pool inav position to gps position
-	_position.y = _position.y * _gps_k_inav_pos +  _gps_position.y * _gps_k_gps_pos;
+	_position.x = _position.x * _gps_k_inav_pos +  (_gps_position.x + _gps_position_lag_x) * _gps_k_gps_pos; //pool inav position to gps position
+	_position.y = _position.y * _gps_k_inav_pos +  (_gps_position.y + _gps_position_lag_y) * _gps_k_gps_pos;
 
-	    // calculate new velocity
+
+
+
+	_velocity.x = _velocity.x * _gps_k_inav_spd + (_gps_velocity_x + _gps_velocity_lag_x) * _gps_k_gps_spd ; //pool inav velocity to gps velocity
+	_velocity.y = _velocity.y * _gps_k_inav_spd + (_gps_velocity_y + _gps_velocity_lag_y) * _gps_k_gps_spd ;
+	
+    // calculate new velocity
 	_velocity += velocity_increase;
 
-	_velocity.x = _velocity.x * _gps_k_inav_spd + _gps_velocity_x * _gps_k_gps_spd ; //pool inav velocity to gps velocity
-	_velocity.y = _velocity.y * _gps_k_inav_spd + _gps_velocity_y * _gps_k_gps_spd ;
-	
 
     // store 3rd order estimate (i.e. estimated vertical position) for future use
     _hist_position_estimate_z.push_back(_position_base.z);
 
     // store 3rd order estimate (i.e. horizontal position) for future use at 10hz
-    _historic_xy_counter++;
-    if( _historic_xy_counter >= AP_INTERTIALNAV_SAVE_POS_AFTER_ITERATIONS ) {
-        _historic_xy_counter = 0;
-        _hist_position_estimate_x.push_back(_position_base.x);
-        _hist_position_estimate_y.push_back(_position_base.y);
-    }
+    //_historic_xy_counter++;
+    //if( _historic_xy_counter >= AP_INTERTIALNAV_SAVE_POS_AFTER_ITERATIONS ) {
+    //    _historic_xy_counter = 0;
+    //    _hist_position_estimate_x.push_back(_position_base.x);
+    //    _hist_position_estimate_y.push_back(_position_base.y);
+    //}
 }
 
 //
@@ -225,8 +237,8 @@ void AP_InertialNav::correct_with_gps(uint32_t now, int32_t lon, int32_t lat)
     // sanity check the gps position.  Relies on the main code calling GPS_Glitch::check_position() immediatley after a GPS update
     if (_glitch_detector.glitching()) {
         // failed sanity check so degrate position_error to 10% over 2 seconds (assumes 5hz update rate)
-        _position_error.x *= 0.7943f;
-        _position_error.y *= 0.7943f;
+        //_position_error.x *= 0.7943f;
+        //_position_error.y *= 0.7943f;
     }else{
         // if our internal glitching flag (from previous iteration) is true we have just recovered from a glitch
         // reset the inertial nav position and velocity to gps values
@@ -237,7 +249,31 @@ void AP_InertialNav::correct_with_gps(uint32_t now, int32_t lon, int32_t lat)
            // _position_error.y = 0.0f;
         }
 		else
-		   {_gps_position.x = x; 	_gps_position.y = y;}
+//		   {_gps_position.x = x; 	_gps_position.y = y;}
+		   {_gps_position.x = x; 	_gps_position.y = y;
+
+		  _hp_x.push_back(_position.x); //save current inav position to buffer back point for calculate position change during gps delay
+		  _hp_y.push_back(_position.y);
+		  _hv_x.push_back(_velocity.x); //save current inav velocity for calculate velocity change during gps delay
+		  _hv_y.push_back(_velocity.y);
+
+		  if (_gps_delay ==0) {
+				  _gps_position_lag_x = 0; //todo change to peek 
+				  _gps_position_lag_y = 0;			 
+				  _gps_velocity_lag_x = 0;
+				  _gps_velocity_lag_y = 0;		  
+								}
+		  else {
+			  if( _hp_x.is_full()) {  //calculate delayed speed and position
+				  _gps_position_lag_x = _position.x - _hp_x.peek(_gps_sample_number); //todo change to peek 
+				  _gps_position_lag_y = _position.y - _hp_y.peek(_gps_sample_number);			 
+				  _gps_velocity_lag_x = _velocity.x - _hv_x.peek(_gps_sample_number);
+				  _gps_velocity_lag_y = _velocity.y - _hv_y.peek(_gps_sample_number);
+				  					}
+		        }
+		
+		
+			}
 
 	
 /*		else{
@@ -292,16 +328,16 @@ void AP_InertialNav::setup_home_position(void)
     _lon_to_cm_scaling = longitude_scale(_ahrs.get_home()) * LATLON_TO_CM;
 
     // reset corrections to base position to zero
-    _position_base.x = 0.0f;
-    _position_base.y = 0.0f;
-    _position_correction.x = 0.0f;
-    _position_correction.y = 0.0f;
+    //_position_base.x = 0.0f;
+    //_position_base.y = 0.0f;
+    //_position_correction.x = 0.0f;
+    //_position_correction.y = 0.0f;
     _position.x = 0.0f;
     _position.y = 0.0f;
 
     // clear historic estimates
-    _hist_position_estimate_x.clear();
-    _hist_position_estimate_y.clear();
+   // _hist_position_estimate_x.clear();
+  //  _hist_position_estimate_y.clear();
 
     // set xy as enabled
 if ( _gps_k_spd !=0)
@@ -428,12 +464,25 @@ void AP_InertialNav::set_altitude( float new_altitude)
 void AP_InertialNav::update_gains()
 {
  
+	float spd_kff = 1.f ; //mapf(constrain(fabs(pythagorous2(_velocity.x, _velocity.y)), 100.f, 300.f)  ,100.f ,300.f , 1.f , 3.f  ); // speed 0-100 cm per second spd_kff = 1 200=2  300 and above  = 3  
    
-	_gps_k_gps_spd = (float)_gps_k_spd/10000.0f;
+	_gps_k_gps_spd = (float)_gps_k_spd * spd_kff /1000.0f; //v7 10 000 v008 1000 
 	_gps_k_inav_spd = 1.0f - _gps_k_gps_spd ;
 
-	_gps_k_gps_pos = (float)_gps_k_pos/10000.0f;
+	_gps_k_gps_pos = (float)_gps_k_pos  * spd_kff /1000.0f; //v7 10 000 v008 1000 
 	_gps_k_inav_pos = 1.0f - _gps_k_gps_pos ;
+
+
+	_gps_sample_number = 0; //_gps_delay ==5 or out of range
+	if (_gps_delay ==1) _gps_sample_number = 4; //indian code example )
+	if (_gps_delay ==2) _gps_sample_number = 3;
+	if (_gps_delay ==3) _gps_sample_number = 2;
+	if (_gps_delay ==4) _gps_sample_number = 1;
+	 
+
+
+
+
 
 
 
@@ -457,18 +506,20 @@ void AP_InertialNav::set_velocity_z(float z )
 void AP_InertialNav::set_position_xy(float x, float y)
 {
     // reset position from home
-    _position_base.x = x;
-    _position_base.y = y;
-    _position_correction.x = 0.0f;
-    _position_correction.y = 0.0f;
+    //_position_base.x = x;
+    //_position_base.y = y;
+    //_position_correction.x = 0.0f;
+    //_position_correction.y = 0.0f;
+	_position.x = x;
+	_position.y = y;
 	_gps_position.x = x; 
 	_gps_position.y = y;
     // clear historic estimates
-    _hist_position_estimate_x.clear();
-    _hist_position_estimate_y.clear();
+    //_hist_position_estimate_x.clear();
+    //_hist_position_estimate_y.clear();
 
     // add new position for future use
     _historic_xy_counter = 0;
-    _hist_position_estimate_x.push_back(_position_base.x);
-    _hist_position_estimate_y.push_back(_position_base.y);
+    //_hist_position_estimate_x.push_back(_position_base.x);
+    //_hist_position_estimate_y.push_back(_position_base.y);
 }
